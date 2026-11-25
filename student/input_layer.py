@@ -14,7 +14,8 @@
 
 Проверка: pytest tests/test_01_input.py
 """
-import unicodedata  # noqa: F401  (пригодится в решении)
+import unicodedata
+from collections import defaultdict, deque
 
 
 class InputRejected(Exception):
@@ -22,15 +23,39 @@ class InputRejected(Exception):
 
 
 def sanitize_input(text: str, max_len: int = 2000) -> str:
-    # TODO: реализуйте очистку и проверки из описания выше.
-    return text
+    cleaned = []
+    for ch in text:
+        # «символы-теги» из блока Variations Selectors Supplement
+        if "\U000e0000" <= ch <= "\U000e007f":
+            continue
+        # невидимые символы (нулевой ширины и т.п.) и управляющие, кроме \n и \t
+        category = unicodedata.category(ch)
+        if category == "Cf" or (category == "Cc" and ch not in "\n\t"):
+            continue
+        cleaned.append(ch)
+
+    # NFKC превращает полноширинные буквы в обычные и т.п.
+    result = unicodedata.normalize("NFKC", "".join(cleaned)).strip()
+
+    if not result:
+        raise InputRejected("пустой запрос или состоит из невидимых символов")
+    if len(result) > max_len:
+        raise InputRejected(f"запрос длиннее {max_len} символов")
+    return result
 
 
 class RateLimiter:
     def __init__(self, limit: int = 5, window_s: float = 60):
         self.limit = limit
         self.window_s = window_s
+        self._history: dict[str, deque[float]] = defaultdict(deque)
 
     def allow(self, user_id: str, now: float) -> bool:
-        # TODO: храните время прошлых запросов каждого пользователя и считайте только свежие.
+        history = self._history[user_id]
+        # скользящее окно: выбрасываем запросы старше window_s секунд
+        while history and now - history[0] >= self.window_s:
+            history.popleft()
+        if len(history) >= self.limit:
+            return False
+        history.append(now)
         return True

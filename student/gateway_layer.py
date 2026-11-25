@@ -18,18 +18,59 @@
 
 Проверка: pytest tests/test_05_gateway.py
 """
-import posixpath  # noqa: F401  (пригодится в решении)
+import posixpath
+
+
+def _norm(path: str) -> str:
+    return posixpath.normpath(path)
+
+
+def _inside(path: str, prefix: str) -> bool:
+    """Путь (уже нормализованный) лежит внутри папки prefix."""
+    return path == prefix or path.startswith(prefix + "/")
 
 
 def decide(tool: str, args: dict) -> str:
-    # TODO: реализуйте правила из описания.
-    return "allow"
+    if tool == "search_knowledge_base":
+        return "allow"
+
+    if tool == "web_search":
+        query = args.get("query", "")
+        if len(query) > 200 or "http" in query.lower():
+            return "deny"
+        return "allow"
+
+    if tool == "read_file":
+        path = args.get("path", "")
+        norm = _norm(path)
+        name = posixpath.basename(norm).lower()
+        # .., абсолютные пути и любые .env — всегда отказ
+        if posixpath.isabs(path) or ".." in norm.split("/") or name.startswith(".env"):
+            return "deny"
+        return "allow" if _inside(norm, "docs") else "deny"
+
+    if tool == "send_email":
+        to = args.get("to", "")
+        return "ask" if to.lower().endswith("@company.example") else "deny"
+
+    if tool == "write_file":
+        path = args.get("path", "")
+        return "ask" if _inside(_norm(path), "drafts") else "deny"
+
+    if tool == "run_shell":
+        return "deny"
+
+    # fail-safe default: неизвестный инструмент — «нельзя»
+    return "deny"
 
 
 class Budget:
     def __init__(self, max_steps: int = 8):
         self.max_steps = max_steps
+        self.used = 0
 
     def spend(self) -> bool:
-        # TODO: считайте шаги.
+        if self.used >= self.max_steps:
+            return False
+        self.used += 1
         return True

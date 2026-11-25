@@ -17,13 +17,18 @@
 
 Проверка: pytest tests/test_07_observability.py
 """
-import hashlib  # noqa: F401
-import os  # noqa: F401
+import hashlib
+import os
 
 
 def audit_event(user_id: str, event: str, text: str) -> dict:
-    # TODO: уберите text, добавьте chars и sha256.
-    return {"user_id": user_id, "event": event, "text": text}
+    # журнал — не склад писем и паролей: храню только метаданные и отпечаток текста
+    return {
+        "user_id": user_id,
+        "event": event,
+        "chars": len(text),
+        "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest()[:12],
+    }
 
 
 class AlertDetector:
@@ -33,10 +38,19 @@ class AlertDetector:
         self.history = []
 
     def observe(self, count: float) -> bool:
-        # TODO: сравните count с обычным уровнем.
+        # пока мало истории, сравнивать не с чем — тревогу не поднимаем
+        if len(self.history) < 5:
+            self.history.append(count)
+            return False
+        recent = self.history[-self.window:]
+        baseline = sum(recent) / len(recent)
+        if count > self.factor * baseline:
+            # минута с тревогой в базу сравнения не попадает,
+            # иначе всплеск «приучит» детектор к себе
+            return True
+        self.history.append(count)
         return False
 
 
 def kill_switch_active(path: str) -> bool:
-    # TODO: проверьте существование файла.
-    return False
+    return os.path.exists(path)

@@ -16,8 +16,11 @@
 
 Проверка: pytest tests/test_06_secrets.py
 """
-import re  # noqa: F401
-import secrets  # noqa: F401
+import re
+import secrets
+
+DEFAULT_TTL_S = 300     # срок жизни по умолчанию
+MAX_TTL_S = 3600        # потолок: дольше не бывает
 
 
 class TokenVault:
@@ -25,21 +28,33 @@ class TokenVault:
         self._tokens = {}
 
     def issue(self, scope: str, now: float, ttl_s: float | None = None) -> dict:
-        # TODO: срок по умолчанию, потолок срока, привязка к scope.
-        token = "static-token"
-        expires = now + 90 * 24 * 3600
-        self._tokens[token] = {"scope": None, "expires_at": expires}
-        return {"token": token, "scope": scope, "expires_at": expires}
+        ttl = DEFAULT_TTL_S if ttl_s is None else min(ttl_s, MAX_TTL_S)
+        token = secrets.token_urlsafe(32)   # предсказуемый random тут не годится
+        record = {"scope": scope, "expires_at": now + ttl, "revoked": False}
+        self._tokens[token] = record
+        return {"token": token, "scope": scope, "expires_at": record["expires_at"]}
 
     def check(self, token: str, scope: str, now: float) -> bool:
-        # TODO: проверьте срок, область и отзыв.
-        return token in self._tokens
+        record = self._tokens.get(token)
+        if record is None or record["revoked"]:
+            return False
+        if now >= record["expires_at"]:
+            return False
+        return record["scope"] == scope
 
     def revoke(self, token: str) -> None:
-        # TODO: отзыв.
-        pass
+        if token in self._tokens:
+            self._tokens[token]["revoked"] = True
+
+
+_SECRET_PATTERNS = [
+    re.compile(r"\b(?:sk|tvly)-[\w-]{8,}"),          # sk-... и tvly-...
+    re.compile(r"\bBearer\s+\S+", re.I),             # Bearer <токен>
+    re.compile(r"\b(?:api_key|token|password)\s*[=:]\s*\S+", re.I),  # пары ключ=значение
+]
 
 
 def redact(text: str) -> str:
-    # TODO: спрячьте секреты.
+    for pattern in _SECRET_PATTERNS:
+        text = pattern.sub("[СКРЫТО]", text)
     return text

@@ -17,17 +17,31 @@
 """
 
 
+import re
+
+
 def retrieve(query: str, user: dict, chunks: list, k: int, score) -> list:
-    # TODO: сначала отфильтруйте по правам, потом отсортируйте и возьмите k.
-    ranked = sorted(chunks, key=lambda c: -score(query, c["text"]))
+    # сначала фильтр по правам, и только потом отбор лучших k
+    allowed = set(user.get("groups", []))
+    visible = [c for c in chunks if c.get("group") in allowed]
+    ranked = sorted(visible, key=lambda c: -score(query, c["text"]))
     return ranked[:k]
 
 
 def is_trusted_source(source: str) -> bool:
-    # TODO: проверьте источник.
-    return True
+    return source.startswith("kb/") and ".." not in source
+
+
+_COMMENT = re.compile(r"<!--.*?-->", re.S)
+# элемент (с любым текстом до style) со скрытым содержимым: целиком с телом
+_HIDDEN = re.compile(
+    r"<\w+[^>]*(?:display\s*:\s*none|color\s*:\s*(?:#fff(?:fff)?|white\b))[^>]*>.*?</\w+>",
+    re.S | re.I,
+)
+_ZWSP = re.compile("[\u200b-\u200f\u2060\ufeff]")
 
 
 def clean_document(text: str) -> str:
-    # TODO: уберите скрытое содержимое.
-    return text
+    text = _COMMENT.sub("", text)
+    text = _HIDDEN.sub("", text)
+    return _ZWSP.sub("", text)

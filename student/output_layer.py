@@ -16,6 +16,28 @@ check_output(text, allowed_hosts) — вернуть безопасный вар
 """
 
 
+import re
+from urllib.parse import urlparse
+
+_IMG = re.compile(r"!\[([^\]]*)\]\((https?://[^)\s]+)\)")
+_LINK = re.compile(r"(?<!\!)\[([^\]]*)\]\((https?://[^)\s]+)\)")
+_NAKED = re.compile(r"https?://[^\s)\]]+")
+
+
+def _host_allowed(url: str, allowed_hosts: set) -> bool:
+    host = urlparse(url).hostname or ""
+    return any(host == h or host.endswith("." + h) for h in allowed_hosts)
+
+
 def check_output(text: str, allowed_hosts: set) -> str:
-    # TODO: реализуйте проверки из описания.
-    return text
+    # 1. картинки с чужим адресом убираем целиком
+    text = _IMG.sub(lambda m: "[изображение удалено]"
+                    if not _host_allowed(m.group(2), allowed_hosts) else m.group(0), text)
+    # 2. у ссылок на чужие адреса оставляем только текст
+    text = _LINK.sub(lambda m: m.group(1)
+                     if not _host_allowed(m.group(2), allowed_hosts) else m.group(0), text)
+    # 3. «голые» чужие адреса убираем
+    text = _NAKED.sub(lambda m: "[ссылка удалена]"
+                      if not _host_allowed(m.group(0), allowed_hosts) else m.group(0), text)
+    # 4. ответ — недоверенный текст: не даём вставить его на страницу как HTML
+    return text.replace("<", "&lt;").replace(">", "&gt;")
